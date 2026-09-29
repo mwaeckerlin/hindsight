@@ -1,0 +1,52 @@
+# End-to-end stack of tests/run-e2e.sh. The network is internal: hindsight
+# reaches nothing outside the stack, which proves that it starts and embeds
+# without downloading anything. The keys are test values of this stack only.
+name: hindsight-e2e
+
+services:
+  hindsight:
+    image: mwaeckerlin/hindsight
+    environment:
+      HINDSIGHT_API_WORKER_ID: hindsight
+      # the mock LLM derives facts from the stored text, no LLM needed
+      HINDSIGHT_API_LLM_PROVIDER: mock
+      HINDSIGHT_API_LLM_MODEL: mock-model
+      # the key alone switches the key check on
+      HINDSIGHT_API_TENANT_API_KEY_FILE: /run/secrets/tenant_key
+    secrets:
+      - tenant_key
+    volumes:
+      - data:/data
+    stop_grace_period: 30s
+    networks:
+      - e2e
+
+  # the same image without a key: it runs open, for a network isolated otherwise
+  hindsight-open:
+    image: mwaeckerlin/hindsight
+    environment:
+      HINDSIGHT_API_WORKER_ID: hindsight-open
+      HINDSIGHT_API_LLM_PROVIDER: mock
+      HINDSIGHT_API_LLM_MODEL: mock-model
+    networks:
+      - e2e
+
+  check:
+    build: .
+    image: mwaeckerlin/hindsight-e2e-check
+    environment:
+      HINDSIGHT_URL: http://hindsight:8888
+      HINDSIGHT_TEST_KEY: e2e-tenant-key-of-the-test-stack
+    networks:
+      - e2e
+
+secrets:
+  tenant_key:
+    environment: HINDSIGHT_E2E_TENANT_KEY
+
+volumes:
+  data:
+
+networks:
+  e2e:
+    internal: true

@@ -1,0 +1,32 @@
+services:
+  hindsight:
+    image: mwaeckerlin/hindsight
+    build:
+      context: .
+      target: api
+    ports:
+      - 8888:8888
+    environment:
+      HINDSIGHT_API_WORKER_ID: hindsight
+      HINDSIGHT_API_LLM_PROVIDER: openai
+      HINDSIGHT_API_LLM_BASE_URL: http://litellm:4000/v1
+      HINDSIGHT_API_LLM_MODEL: gpt-4o-mini
+      HINDSIGHT_API_LLM_API_KEY_FILE: /run/secrets/hindsight_llm_key
+      # optional: the key switches the key check on; without it the API runs open
+      HINDSIGHT_API_TENANT_API_KEY_FILE: /run/secrets/hindsight_tenant_key
+    secrets:
+      - hindsight_llm_key
+      - hindsight_tenant_key
+    volumes:
+      - data:/data
+    # the embedded PostgreSQL needs time to write its checkpoint on stop
+    stop_grace_period: 30s
+
+secrets:
+  hindsight_llm_key:
+    environment: HINDSIGHT_LLM_KEY
+  hindsight_tenant_key:
+    environment: HINDSIGHT_TENANT_KEY
+
+volumes:
+  data:
