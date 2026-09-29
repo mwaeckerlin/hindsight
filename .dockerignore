@@ -2,6 +2,7 @@
 .github
 node_modules
 tests
+**/*.test.cjs
 *.md
 # credentials of the test environment never enter a build context
 .env

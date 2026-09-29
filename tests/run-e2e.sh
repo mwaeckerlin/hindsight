@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End to end: starts the built image in tests/e2e/docker-compose.yml without
 # internet access, stores a memory, restarts the service, recalls the memory,
-# and checks that the tenant key reaches the container as a file only.
+# checks that the tenant key reaches the container as a file only, and runs
+# the control plane in front of it, with and without its login.
 #
 # Usage: tests/run-e2e.sh   (after `npm run build`)
 
@@ -9,6 +10,7 @@ set -uo pipefail
 cd "$(dirname "$0")/e2e"
 
 export HINDSIGHT_E2E_TENANT_KEY="e2e-tenant-key-of-the-test-stack"
+export HINDSIGHT_E2E_ACCESS_KEY="e2e-access-key-of-the-test-stack"
 COMPOSE=(docker compose -f docker-compose.yml)
 FAIL=0
 
@@ -52,10 +54,20 @@ fi
 wait_healthy || exit 1
 "${COMPOSE[@]}" run --rm check restored || FAIL=1
 
+# the web interface reaches the service with the tenant key, behind its login
+"${COMPOSE[@]}" up -d control-plane || exit 1
+wait_healthy control-plane || exit 1
+"${COMPOSE[@]}" run --rm -e CONTROL_PLANE_URL=http://control-plane:9999 check control-plane || FAIL=1
+
 # the key is optional: without it the service runs open
 "${COMPOSE[@]}" up -d hindsight-open || exit 1
 wait_healthy hindsight-open || exit 1
 "${COMPOSE[@]}" run --rm -e HINDSIGHT_URL=http://hindsight-open:8888 check open || FAIL=1
+
+# and the web interface without a login in front of it
+"${COMPOSE[@]}" up -d control-plane-open || exit 1
+wait_healthy control-plane-open || exit 1
+"${COMPOSE[@]}" run --rm -e CONTROL_PLANE_URL=http://control-plane-open:9999 check control-plane-open || FAIL=1
 
 if [[ ${FAIL} -ne 0 ]]; then
     "${COMPOSE[@]}" logs --tail 80 hindsight

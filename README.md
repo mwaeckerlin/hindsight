@@ -13,15 +13,28 @@ The image is built on [mwaeckerlin/ubuntu-very-base] and ships on [mwaeckerlin/u
 ```bash
 $ printf '%s' "$TENANT_KEY" | docker secret create hindsight_tenant_key -
 $ printf '%s' "$LITELLM_KEY" | docker secret create hindsight_llm_key -
+$ printf '%s' "$CP_ACCESS_KEY" | docker secret create hindsight_cp_access_key -
 ```
 
-With Docker Compose, [docker-compose.yml](docker-compose.yml) starts the service with both secrets: `npm start`.
+With Docker Compose, [docker-compose.yml](docker-compose.yml) starts the API and the control plane with these secrets: `npm start`.
 
 With a tenant key, every request to the API and to the MCP endpoints carries `Authorization: Bearer <tenant key>`; `/health` answers without a key.
 
 - **API:** `http://<service>:8888/v1/default/banks/<bank>/memories` (retain) and `…/memories/recall` (recall)
 - **MCP:** `http://<service>:8888/mcp/<bank>/`, one endpoint per memory bank
 - **Health:** `http://<service>:8888/health`
+
+### Control Plane
+
+The second image `mwaeckerlin/hindsight:control-plane` is the web interface of Hindsight: on port 9999 an operator browses the memory banks, their memories, documents and entities, and runs recall and reflect by hand. It runs the control plane as upstream publishes it, on the headless [mwaeckerlin/nodejs], and carries no shell. [docker-compose.yml](docker-compose.yml) starts it beside the API.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `HINDSIGHT_CP_DATAPLANE_API_URL` | `http://hindsight:8888` | Address of the API |
+| `HINDSIGHT_CP_DATAPLANE_API_KEY_FILE` | *(empty)* | File with the tenant key of the API, a Docker secret; needed when the API has one |
+| `HINDSIGHT_CP_ACCESS_KEY_FILE` | *(empty)* | File with the access key of the login page, a Docker secret; without it the pages are open |
+
+As with the API, the start reads every `HINDSIGHT_CP_*_FILE` into `HINDSIGHT_CP_*`, and a variable set both ways, a missing or an empty file stops the start with an error that names it.
 
 ## Administration
 
@@ -54,6 +67,7 @@ The container runs as `somebody` of [mwaeckerlin/ubuntu-scratch], uid 100, gid 1
 
 - **No key in the environment:** keys reach the container as Docker secret files and are read by the start, so `docker inspect` and the stack file show a path, never a key. The end-to-end test checks the environment of the running container for the key.
 - **Authentication on every request, optional:** with a tenant key, the API and every MCP endpoint refuse a request without the key or with a wrong one. Without a key the API runs open, and every client that reaches port 8888 reads and writes every memory bank. Run it without a key only where the network itself decides who reaches the service, such as a Swarm overlay network of its own, encrypted, that only the agents and their gateways join; everywhere else set the key.
+- **Control plane login, optional:** with an access key, every page and every route of the control plane asks for it first. Whoever passes it reads and changes every memory bank with the tenant key of the control plane. Run it without an access key only behind a reverse proxy that asks for a login of its own, such as Traefik with Authentik, and never publish port 9999 directly.
 - **One shell, for PostgreSQL:** the image carries no bash, busybox, perl or package manager. Its only shell is dash as `/bin/sh`, because the embedded PostgreSQL starts its own programs through it (`initdb`, `pg_ctl`); without it the service does not start. A PostgreSQL in a container of its own would need the same shell there, and would keep the API container free of it; the embedded one keeps the service in one container. For the same database the image carries `kill` and `ps`, with which pg0 checks and stops its server.
 - **No download at runtime:** the models are baked in and `HF_HUB_OFFLINE` is set; the end-to-end test starts the service on a network without internet access.
 
@@ -63,7 +77,7 @@ The container runs as `somebody` of [mwaeckerlin/ubuntu-scratch], uid 100, gid 1
 $ npm test
 ```
 
-`npm test` runs the docs contract, the unit tests of the start, the image contract, and the end-to-end test in [tests/e2e](tests/e2e): the image on a network without internet access with a mock LLM, retain and recall with the key, refusal without and with a wrong key, the MCP endpoint, the memory after a restart, and the key missing from the container environment. The image is published for `linux/amd64` and `linux/arm64` by the reusable workflow of [mwaeckerlin/scratch](https://github.com/mwaeckerlin/scratch#publishing-on-docker-hub).
+`npm test` runs the docs contract, the unit tests of the start, the image contract, and the end-to-end test in [tests/e2e](tests/e2e): the image on a network without internet access with a mock LLM, retain and recall with the key, refusal without and with a wrong key, the MCP endpoint, the memory after a restart, the key missing from the container environment, and the control plane with and without its login. The image is published for `linux/amd64` and `linux/arm64` by the reusable workflow of [mwaeckerlin/scratch](https://github.com/mwaeckerlin/scratch#publishing-on-docker-hub).
 
 ## Licence
 
@@ -74,3 +88,4 @@ The MIT licence in [LICENSE](LICENSE) covers the files of this repository. Hinds
 [configuration reference]: https://github.com/vectorize-io/hindsight/blob/main/hindsight-api-slim/hindsight_api/config.py
 [mwaeckerlin/ubuntu-very-base]: https://github.com/mwaeckerlin/ubuntu-very-base
 [mwaeckerlin/ubuntu-scratch]: https://github.com/mwaeckerlin/ubuntu-scratch
+[mwaeckerlin/nodejs]: https://github.com/mwaeckerlin/nodejs

@@ -117,4 +117,31 @@ COPY --from=build --chown=0:0 /opt/hindsight/models /opt/hindsight/models
 COPY --from=build --chown=0:0 /opt/hindsight/bin /opt/hindsight/bin
 COPY --from=build --chown=${RUN_USER}:${RUN_GROUP} /volumes/ /
 
+#### control-plane-build: the web interface as upstream publishes it ####
+# The npm package carries the built Next.js standalone server with its own
+# node_modules, so nothing is compiled here. It unpacks to 75MB: on a slow
+# link the default read timeout broke the download off after 28 minutes
+# (measured 2026-09-29), so the download waits longer and repeats.
+FROM mwaeckerlin/nodejs-build AS control-plane-build
+RUN --mount=type=cache,target=/home/coder/.npm,uid=101,gid=1001 \
+    npm install --omit=dev --ignore-scripts --no-save \
+      --fetch-timeout=1800000 --fetch-retries=10 --fetch-retry-mintimeout=10000 \
+      @vectorize-io/hindsight-control-plane@latest \
+    && test -f node_modules/@vectorize-io/hindsight-control-plane/standalone/server.js
+
+#### control-plane: browse the memory banks, on the headless Node.js base ####
+FROM mwaeckerlin/nodejs AS control-plane
+ENV CONTAINERNAME="hindsight-control-plane" \
+    NODE_ENV="production" \
+    HOSTNAME="0.0.0.0" \
+    PORT="9999" \
+    NEXT_TELEMETRY_DISABLED="1" \
+    HINDSIGHT_CP_DATAPLANE_API_URL="http://hindsight:8888"
+EXPOSE 9999
+COPY --from=control-plane-build /app/node_modules/@vectorize-io/hindsight-control-plane/standalone /app/control-plane
+COPY control-plane/start.cjs /app/start.cjs
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["/usr/bin/node", "/app/start.cjs", "--health"]
+CMD ["/app/start.cjs"]
+
 FROM api

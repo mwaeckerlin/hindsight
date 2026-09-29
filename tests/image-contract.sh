@@ -2,17 +2,18 @@
 # Image contract: the shipped image carries no tool to pivot with.
 #
 # A production image must contain nothing that lets an attacker who reaches
-# code execution pivot: no bash, no perl, no busybox. The one exception is
-# /bin/sh as dash, because the embedded PostgreSQL runs its own programs
-# through it (initdb, pg_ctl); the contract checks that it is dash and
-# nothing larger.
+# code execution pivot: no shell, no perl, no busybox. The one exception is
+# /bin/sh as dash in the API image, because the embedded PostgreSQL runs its
+# own programs through it (initdb, pg_ctl); for an image given as IMAGE=dash
+# the contract checks that /bin/sh is dash and nothing larger, every other
+# image has no /bin/sh at all.
 #
 # The check runs the interpreter as the container entrypoint instead of asking
 # the image to look at its own filesystem. `--pull=never` keeps docker from
 # silently pulling a stale image from the registry when the local build is
 # missing; that would test the wrong artefact.
 #
-# Usage: tests/image-contract.sh IMAGE...
+# Usage: tests/image-contract.sh IMAGE[=dash]...
 
 set -uo pipefail
 
@@ -46,19 +47,24 @@ _no_interpreter() {
 
 echo "==> Image contract: no tool to pivot with"
 
-for image in "$@"; do
+for argument in "$@"; do
+    image="${argument%=dash}"
     _image_exists "${image}" || continue
     _no_interpreter "${image}" /bin/bash     bash    -c :
     _no_interpreter "${image}" /usr/bin/bash bash_usr -c :
     _no_interpreter "${image}" /bin/busybox  busybox ls /
     _no_interpreter "${image}" /usr/bin/perl perl    -e 1
     _no_interpreter "${image}" /usr/bin/apt-get apt  --version
-    # /bin/sh exists for PostgreSQL, and it is dash and nothing else
-    if docker run --rm --pull=never --entrypoint /usr/bin/dash "${image}" \
-        -c 'test /bin/sh -ef /usr/bin/dash' > /dev/null 2>&1; then
-        _pass "${image}_sh_is_dash_only"
+    if [[ "${argument}" == *=dash ]]; then
+        # /bin/sh exists for PostgreSQL, and it is dash and nothing else
+        if docker run --rm --pull=never --entrypoint /usr/bin/dash "${image}" \
+            -c 'test /bin/sh -ef /usr/bin/dash' > /dev/null 2>&1; then
+            _pass "${image}_sh_is_dash_only"
+        else
+            _fail "${image}_sh_is_dash_only" "/bin/sh is missing or not dash"
+        fi
     else
-        _fail "${image}_sh_is_dash_only" "/bin/sh is missing or not dash"
+        _no_interpreter "${image}" /bin/sh sh -c :
     fi
 done
 

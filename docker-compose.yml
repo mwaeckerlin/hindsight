@@ -22,11 +22,31 @@ services:
     # the embedded PostgreSQL needs time to write its checkpoint on stop
     stop_grace_period: 30s
 
+  control-plane:
+    image: mwaeckerlin/hindsight:control-plane
+    build:
+      context: .
+      target: control-plane
+    ports:
+      - 9999:9999
+    environment:
+      HINDSIGHT_CP_DATAPLANE_API_URL: http://hindsight:8888
+      # the tenant key of the API, when it has one
+      HINDSIGHT_CP_DATAPLANE_API_KEY_FILE: /run/secrets/hindsight_tenant_key
+      # optional: a login in front of the pages; without it a reverse proxy
+      # with its own login protects them
+      HINDSIGHT_CP_ACCESS_KEY_FILE: /run/secrets/hindsight_cp_access_key
+    secrets:
+      - hindsight_tenant_key
+      - hindsight_cp_access_key
+
 secrets:
   hindsight_llm_key:
     environment: HINDSIGHT_LLM_KEY
   hindsight_tenant_key:
     environment: HINDSIGHT_TENANT_KEY
+  hindsight_cp_access_key:
+    environment: HINDSIGHT_CP_ACCESS_KEY
 
 volumes:
   data:

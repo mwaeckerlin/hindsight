@@ -31,18 +31,42 @@ services:
     networks:
       - e2e
 
+  # the web interface in front of the service with the key, behind its own login
+  control-plane:
+    image: mwaeckerlin/hindsight:control-plane
+    environment:
+      HINDSIGHT_CP_DATAPLANE_API_URL: http://hindsight:8888
+      HINDSIGHT_CP_DATAPLANE_API_KEY_FILE: /run/secrets/tenant_key
+      HINDSIGHT_CP_ACCESS_KEY_FILE: /run/secrets/access_key
+    secrets:
+      - tenant_key
+      - access_key
+    networks:
+      - e2e
+
+  # the web interface without a login, in front of the open service
+  control-plane-open:
+    image: mwaeckerlin/hindsight:control-plane
+    environment:
+      HINDSIGHT_CP_DATAPLANE_API_URL: http://hindsight-open:8888
+    networks:
+      - e2e
+
   check:
     build: .
     image: mwaeckerlin/hindsight-e2e-check
     environment:
       HINDSIGHT_URL: http://hindsight:8888
       HINDSIGHT_TEST_KEY: e2e-tenant-key-of-the-test-stack
+      HINDSIGHT_TEST_ACCESS_KEY: e2e-access-key-of-the-test-stack
     networks:
       - e2e
 
 secrets:
   tenant_key:
     environment: HINDSIGHT_E2E_TENANT_KEY
+  access_key:
+    environment: HINDSIGHT_E2E_ACCESS_KEY
 
 volumes:
   data:

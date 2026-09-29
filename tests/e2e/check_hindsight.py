@@ -6,12 +6,15 @@ without internet access and knows the tenant key only as a test value.
     check_hindsight.py store     health, refusal without key, retain, recall, MCP
     check_hindsight.py restored  recall of what `store` retained, after a restart
     check_hindsight.py open      a service started without a tenant key runs open
+    check_hindsight.py control-plane       the web interface with its login
+    check_hindsight.py control-plane-open  the web interface without a login
 """
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 URL = os.environ["HINDSIGHT_URL"].rstrip("/")
@@ -101,9 +104,102 @@ def open_service():
     check("without_tenant_key_the_api_runs_open", status == 200, f"status {status}: {text[:300]}")
 
 
+def page(url, cookie=None, method="GET", body=None):
+    """Status, body text and Set-Cookie of one request to the control plane,
+    without following redirects."""
+    headers = {"Content-Type": "application/json", "Accept": "text/html,application/json"}
+    if cookie:
+        headers["Cookie"] = cookie
+    data = json.dumps(body).encode() if body is not None else None
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        with opener.open(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=60) as response:
+            return response.status, response.read().decode(), response.headers.get("Set-Cookie", "")
+    except urllib.error.HTTPError as error:
+        text = error.read().decode()
+        cookie = error.headers.get("Set-Cookie", "")
+        error.close()
+        return error.code, text, cookie
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+
+
+def location(url, cookie=None):
+    """The target of the redirect the control plane answers a page with."""
+    headers = {"Accept": "text/html"}
+    if cookie:
+        headers["Cookie"] = cookie
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        with opener.open(urllib.request.Request(url, headers=headers), timeout=60) as response:
+            return response.status, ""
+    except urllib.error.HTTPError as error:
+        target = error.headers.get("Location", "")
+        error.close()
+        return error.code, target
+
+
+def rendered(url, cookie=None):
+    """Status and body of a page after the redirects of the application: the
+    root of the control plane sends the browser on to its start page."""
+    host = urllib.parse.urlsplit(url).netloc
+    for _ in range(5):
+        status, target = location(url, cookie)
+        if status not in (301, 302, 303, 307, 308):
+            break
+        url = urllib.parse.urljoin(url, target)
+        # a redirect to another host, such as the bind address 0.0.0.0, leaves
+        # the browser stranded
+        if urllib.parse.urlsplit(url).netloc != host:
+            return status, f"redirect to another host: {target}", url
+    status, text, _ = page(url, cookie=cookie)
+    return status, text, url
+
+
+def control_plane():
+    """The web interface with a login, in front of the service with the key."""
+    base = os.environ["CONTROL_PLANE_URL"].rstrip("/")
+    status, target = location(base + "/")
+    check("control_plane_sends_to_login_without_session",
+          status in (302, 303, 307, 308) and "/login" in target, f"status {status}, location {target}")
+
+    status, _, _ = page(base + "/api/banks")
+    check("control_plane_api_refuses_without_session", status == 401, f"status {status}")
+
+    status, _, cookie = page(base + "/api/auth/login", method="POST", body={"key": "a-wrong-key"})
+    check("control_plane_refuses_wrong_access_key", status == 401 and not cookie, f"status {status}")
+
+    status, text, cookie = page(base + "/api/auth/login", method="POST",
+                                body={"key": os.environ["HINDSIGHT_TEST_ACCESS_KEY"]})
+    session = cookie.split(";", 1)[0]
+    check("control_plane_login_with_access_key", status == 200 and session, f"status {status}: {text[:300]}")
+
+    status, text, _ = page(base + "/api/banks", cookie=session)
+    check("control_plane_lists_the_banks_with_the_tenant_key", status == 200 and f'"{BANK}"' in text,
+          f"status {status}: {text[:300]}")
+
+    status, text, url = rendered(base + "/", cookie=session)
+    check("control_plane_page_renders_after_login",
+          status == 200 and "<html" in text.lower() and "/login" not in url, f"status {status} at {url}: {text[:300]}")
+
+
+def control_plane_open():
+    """The web interface without a login, in front of the open service."""
+    base = os.environ["CONTROL_PLANE_URL"].rstrip("/")
+    status, text, url = rendered(base + "/")
+    check("control_plane_without_access_key_runs_open",
+          status == 200 and "<html" in text.lower() and "/login" not in url, f"status {status} at {url}: {text[:300]}")
+    status, text, _ = page(base + "/api/banks")
+    check("control_plane_open_lists_the_banks", status == 200 and '"banks"' in text, f"status {status}: {text[:300]}")
+
+
 def main():
     phase = sys.argv[1]
-    {"store": store, "restored": restored, "open": open_service}[phase]()
+    {"store": store, "restored": restored, "open": open_service,
+     "control-plane": control_plane, "control-plane-open": control_plane_open}[phase]()
     print(f"==> {phase}: {PASSED} passed, {FAILED} failed", flush=True)
     return 1 if FAILED else 0
 
