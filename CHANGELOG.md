@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-23 **1.0.2**
+    - The weekly rebuild starts at 07:17 on Monday, after `mwaeckerlin/nodejs-build` of 06:17 that this image is built on; at 05:17 it took the build of the week before
+
 - 2026-09-29 **1.0.1**
     - The control plane, the web interface for browsing the memory banks, as the second image `mwaeckerlin/hindsight:control-plane` on port 9999, without a shell; its keys come as Docker secrets, and its login is optional
 
