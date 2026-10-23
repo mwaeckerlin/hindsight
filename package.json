@@ -1,6 +1,6 @@
 {
   "name": "@mwaeckerlin/hindsight",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Docker image of the Hindsight agent memory server, with its models and embedded PostgreSQL, and no tool to pivot with",
   "scripts": {
     "build": "docker compose build",

@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-23 **1.0.3**
+    - The build reads the current package lists before it installs, as `mwaeckerlin/ubuntu-very-base` asks; with the lists of the base image's last weekly build, apt asked for a `ca-certificates` the Ubuntu mirror no longer had and the arm64 build failed
+
 - 2026-10-23 **1.0.2**
     - The weekly rebuild starts at 07:17 on Monday, after `mwaeckerlin/nodejs-build` of 06:17 that this image is built on; at 05:17 it took the build of the week before
 
