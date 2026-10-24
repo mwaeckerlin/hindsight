@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-24 **1.0.4**
+    - The build notices a new upstream commit through the commit feed of the branch on GitHub; the GitHub API it asked before answered the shared build machines with 403 and failed the build
+
 - 2026-10-23 **1.0.3**
     - The build reads the current package lists before it installs, as `mwaeckerlin/ubuntu-very-base` asks; with the lists of the base image's last weekly build, apt asked for a `ca-certificates` the Ubuntu mirror no longer had and the arm64 build failed
 

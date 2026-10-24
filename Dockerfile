@@ -19,11 +19,13 @@ ENV UV_PYTHON_INSTALL_DIR="/opt/hindsight/python" \
 # The upstream source, main branch by default, as the archive of that branch:
 # a git fetch of the whole repository broke off after an hour on a slow link,
 # the archive is one download that is repeated when it breaks. ADD of the
-# branch reference is compared on every build, so a new upstream commit
-# rebuilds from here.
+# commit feed of the branch is compared on every build, so a new upstream
+# commit rebuilds from here; the feed changes with a commit only, and unlike
+# the GitHub API, which answered a shared runner with 403, it has no limit
+# for requests without a token.
 ARG HINDSIGHT_REPOSITORY="vectorize-io/hindsight"
 ARG HINDSIGHT_BRANCH="main"
-ADD https://api.github.com/repos/${HINDSIGHT_REPOSITORY}/git/refs/heads/${HINDSIGHT_BRANCH} /opt/hindsight/upstream-ref.json
+ADD https://github.com/${HINDSIGHT_REPOSITORY}/commits/${HINDSIGHT_BRANCH}.atom /opt/hindsight/upstream-commits.atom
 RUN install -d /opt/hindsight/src \
     && curl -fL --retry 10 --retry-all-errors --retry-delay 10 --connect-timeout 30 \
          -o /tmp/hindsight.tar.gz "https://github.com/${HINDSIGHT_REPOSITORY}/archive/refs/heads/${HINDSIGHT_BRANCH}.tar.gz" \
