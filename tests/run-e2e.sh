@@ -2,7 +2,8 @@
 # End to end: starts the built image in tests/e2e/docker-compose.yml without
 # internet access, stores a memory, restarts the service, recalls the memory,
 # checks that the tenant key reaches the container as a file only, and runs
-# the control plane in front of it, with and without its login.
+# the control plane in front of it, with and without its login, at the root
+# and below the base path /hindsight behind Traefik, in Chromium.
 #
 # Usage: tests/run-e2e.sh   (after `npm run build`)
 
@@ -34,7 +35,7 @@ wait_healthy() {
 }
 
 echo "==> Hindsight end to end"
-"${COMPOSE[@]}" build check || exit 1
+"${COMPOSE[@]}" build check proxy browser || exit 1
 "${COMPOSE[@]}" up -d hindsight || exit 1
 wait_healthy || exit 1
 echo "  PASS  hindsight_becomes_healthy_without_internet"
@@ -58,6 +59,23 @@ wait_healthy || exit 1
 "${COMPOSE[@]}" up -d control-plane || exit 1
 wait_healthy control-plane || exit 1
 "${COMPOSE[@]}" run --rm -e CONTROL_PLANE_URL=http://control-plane:9999 check control-plane || FAIL=1
+
+# the web interface below /hindsight behind Traefik without StripPrefix, and
+# the one at the root, in Chromium
+"${COMPOSE[@]}" up -d control-plane-base-path proxy || exit 1
+wait_healthy control-plane-base-path || exit 1
+echo "  PASS  control-plane-base-path_becomes_healthy"
+"${COMPOSE[@]}" run --rm browser || FAIL=1
+
+# a base path the image is not built for stops the start and names the build argument
+OUTPUT=$("${COMPOSE[@]}" run --rm --no-deps -e HINDSIGHT_BASE_PATH=/elsewhere control-plane-base-path 2>&1)
+STATUS=$?
+if [[ ${STATUS} -ne 0 && "${OUTPUT}" == *"built for /hindsight"*"--build-arg HINDSIGHT_BASE_PATH=/elsewhere"* ]]; then
+    echo "  PASS  control_plane_refuses_a_base_path_it_is_not_built_for"
+else
+    echo "  FAIL  control_plane_refuses_a_base_path_it_is_not_built_for: status ${STATUS}: ${OUTPUT}"
+    FAIL=1
+fi
 
 # the key is optional: without it the service runs open
 "${COMPOSE[@]}" up -d hindsight-open || exit 1

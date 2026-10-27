@@ -1,0 +1,13 @@
+# The route of the deployment: everything below /hindsight reaches the control
+# plane with the path unchanged, without StripPrefix; nothing else is routed.
+http:
+  routers:
+    hindsight:
+      rule: "PathPrefix(`/hindsight`)"
+      entryPoints: [web]
+      service: hindsight
+  services:
+    hindsight:
+      loadBalancer:
+        servers:
+          - url: "http://control-plane-base-path:9999"

@@ -52,6 +52,40 @@ services:
     networks:
       - e2e
 
+  # the web interface below the base path the image is built for, behind its login
+  control-plane-base-path:
+    image: mwaeckerlin/hindsight:control-plane
+    environment:
+      HINDSIGHT_BASE_PATH: /hindsight
+      HINDSIGHT_CP_DATAPLANE_API_URL: http://hindsight:8888
+      HINDSIGHT_CP_DATAPLANE_API_KEY_FILE: /run/secrets/tenant_key
+      HINDSIGHT_CP_ACCESS_KEY_FILE: /run/secrets/access_key
+    secrets:
+      - tenant_key
+      - access_key
+    networks:
+      - e2e
+
+  # Traefik with the route of the deployment: PathPrefix(`/hindsight`), no StripPrefix
+  proxy:
+    build: proxy
+    image: mwaeckerlin/hindsight-e2e-proxy
+    user: "65534:65534"
+    networks:
+      - e2e
+
+  # Chromium through the proxy below /hindsight, and at the root without a base path
+  browser:
+    build: browser
+    image: mwaeckerlin/hindsight-e2e-browser
+    environment:
+      PROXY_URL: http://proxy:8080
+      PREFIX: /hindsight
+      ROOT_URL: http://control-plane:9999
+      HINDSIGHT_TEST_ACCESS_KEY: e2e-access-key-of-the-test-stack
+    networks:
+      - e2e
+
   check:
     build: .
     image: mwaeckerlin/hindsight-e2e-check

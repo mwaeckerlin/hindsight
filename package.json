@@ -1,6 +1,6 @@
 {
   "name": "@mwaeckerlin/hindsight",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Docker image of the Hindsight agent memory server, with its models and embedded PostgreSQL, and no tool to pivot with",
   "scripts": {
     "build": "docker compose build",
@@ -11,7 +11,7 @@
     "deploy": "docker compose push",
     "test": "npm run test:docs && npm run test:unit && npm run test:image && npm run test:e2e",
     "test:docs": "bash tests/docs-contract.sh",
-    "test:unit": "python3 -m unittest discover -s tests/unit -v && node --test control-plane/start.test.cjs",
+    "test:unit": "python3 -m unittest discover -s tests/unit -v && node --test control-plane/start.test.cjs control-plane/prepare-base-path.test.cjs",
     "test:image": "npm run build && bash tests/image-contract.sh mwaeckerlin/hindsight=dash mwaeckerlin/hindsight:control-plane",
     "test:e2e": "bash tests/run-e2e.sh"
   }

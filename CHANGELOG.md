@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-27 **1.0.5**
+    - The control plane serves below a base path such as `/hindsight`, with every page, asset and API call under it, behind a reverse proxy that leaves the path as it is; without a base path it serves at the root as before
+
 - 2026-10-24 **1.0.4**
     - The build notices a new upstream commit through the commit feed of the branch on GitHub; the GitHub API it asked before answered the shared build machines with 403 and failed the build
 

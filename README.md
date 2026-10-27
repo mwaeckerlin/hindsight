@@ -11,9 +11,9 @@ The image is built on [mwaeckerlin/ubuntu-very-base] and ships on [mwaeckerlin/u
 ## Usage
 
 ```bash
-$ printf '%s' "$TENANT_KEY" | docker secret create hindsight_tenant_key -
-$ printf '%s' "$LITELLM_KEY" | docker secret create hindsight_llm_key -
-$ printf '%s' "$CP_ACCESS_KEY" | docker secret create hindsight_cp_access_key -
+printf '%s' "$TENANT_KEY" | docker secret create hindsight_tenant_key -
+printf '%s' "$LITELLM_KEY" | docker secret create hindsight_llm_key -
+printf '%s' "$CP_ACCESS_KEY" | docker secret create hindsight_cp_access_key -
 ```
 
 With Docker Compose, [docker-compose.yml](docker-compose.yml) starts the API and the control plane with these secrets: `npm start`.
@@ -33,8 +33,21 @@ The second image `mwaeckerlin/hindsight:control-plane` is the web interface of H
 | `HINDSIGHT_CP_DATAPLANE_API_URL` | `http://hindsight:8888` | Address of the API |
 | `HINDSIGHT_CP_DATAPLANE_API_KEY_FILE` | *(empty)* | File with the tenant key of the API, a Docker secret; needed when the API has one |
 | `HINDSIGHT_CP_ACCESS_KEY_FILE` | *(empty)* | File with the access key of the login page, a Docker secret; without it the pages are open |
+| `HINDSIGHT_BASE_PATH` | *(empty)* | Base path such as `/hindsight`: page, assets and API are served below it; empty serves at the root |
 
 As with the API, the start reads every `HINDSIGHT_CP_*_FILE` into `HINDSIGHT_CP_*`, and a variable set both ways, a missing or an empty file stops the start with an error that names it.
+
+#### Base Path
+
+With `HINDSIGHT_BASE_PATH=/hindsight`, the control plane serves its pages, assets and API below `/hindsight`, and every URL the page requests stays below it. A reverse proxy routes the prefix to port 9999 and leaves the path as it is, such as Traefik with ``PathPrefix(`/hindsight`)`` and no `StripPrefix`.
+
+Next.js builds the base path into the pages and bundles, so the image carries two builds of the same release: the one at the root, and one for the base path of the build argument `HINDSIGHT_BASE_PATH`, by default `/hindsight`. A base path the image is not built for stops the start with an error that names both; another base path needs its own build:
+
+```bash
+docker build --target control-plane --build-arg HINDSIGHT_BASE_PATH=/memory -t hindsight-control-plane .
+```
+
+The build takes the source of the release tag of the published control plane, builds it with upstream's `NEXT_PUBLIC_BASE_PATH`, and puts upstream's own `withBasePath` around the icon and manifest URLs of the page metadata, which Next.js leaves without the base path. It also adds `/` to the matcher of upstream's middleware: Next.js puts the base path in front of the matcher, and without it the middleware skips the bare base path `/hindsight`, which then answers 404 instead of redirecting to the login.
 
 ## Administration
 
@@ -74,10 +87,10 @@ The container runs as `somebody` of [mwaeckerlin/ubuntu-scratch], uid 100, gid 1
 ## Development
 
 ```bash
-$ npm test
+npm test
 ```
 
-`npm test` runs the docs contract, the unit tests of the start, the image contract, and the end-to-end test in [tests/e2e](tests/e2e): the image on a network without internet access with a mock LLM, retain and recall with the key, refusal without and with a wrong key, the MCP endpoint, the memory after a restart, the key missing from the container environment, and the control plane with and without its login. The image is published for `linux/amd64` and `linux/arm64` by the reusable workflow of [mwaeckerlin/scratch](https://github.com/mwaeckerlin/scratch#publishing-on-docker-hub).
+`npm test` runs the docs contract, the unit tests of the start, the image contract, and the end-to-end test in [tests/e2e](tests/e2e): the image on a network without internet access with a mock LLM, retain and recall with the key, refusal without and with a wrong key, the MCP endpoint, the memory after a restart, the key missing from the container environment, the control plane with and without its login, and in Chromium the control plane below `/hindsight` behind Traefik without `StripPrefix` and at the root. The image is published for `linux/amd64` and `linux/arm64` by the reusable workflow of [mwaeckerlin/scratch](https://github.com/mwaeckerlin/scratch#publishing-on-docker-hub).
 
 ## Licence
 

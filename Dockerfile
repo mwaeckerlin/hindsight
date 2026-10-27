@@ -2,6 +2,8 @@
 # reranking models need, exists for glibc only, so the build stage is
 # mwaeckerlin/ubuntu-very-base and the final stages mwaeckerlin/ubuntu-scratch.
 
+ARG HINDSIGHT_REPOSITORY="vectorize-io/hindsight"
+
 #### build: the upstream source and its Python environment ####
 FROM mwaeckerlin/ubuntu-very-base AS build
 RUN apt-get update && $PKG_INSTALL ca-certificates curl git python3 build-essential tzdata procps
@@ -23,7 +25,7 @@ ENV UV_PYTHON_INSTALL_DIR="/opt/hindsight/python" \
 # commit rebuilds from here; the feed changes with a commit only, and unlike
 # the GitHub API, which answered a shared runner with 403, it has no limit
 # for requests without a token.
-ARG HINDSIGHT_REPOSITORY="vectorize-io/hindsight"
+ARG HINDSIGHT_REPOSITORY
 ARG HINDSIGHT_BRANCH="main"
 ADD https://github.com/${HINDSIGHT_REPOSITORY}/commits/${HINDSIGHT_BRANCH}.atom /opt/hindsight/upstream-commits.atom
 RUN install -d /opt/hindsight/src \
@@ -131,6 +133,40 @@ RUN --mount=type=cache,target=/home/coder/.npm,uid=101,gid=1001 \
       @vectorize-io/hindsight-control-plane@latest \
     && test -f node_modules/@vectorize-io/hindsight-control-plane/standalone/server.js
 
+#### control-plane-base-path-build: the same release below a base path ####
+# Next.js builds its base path into the pages and bundles, so the base path
+# is a build of its own: upstream's next.config.ts takes it from
+# NEXT_PUBLIC_BASE_PATH as basePath and assetPrefix. The source is the release
+# tag of the npm package installed above, so both builds are the same version;
+# a stage of its own, so no module of that package is found from the source.
+FROM mwaeckerlin/nodejs-build AS control-plane-base-path-build
+ARG HINDSIGHT_REPOSITORY
+COPY --from=control-plane-build /app/node_modules/@vectorize-io/hindsight-control-plane/package.json /tmp/release.json
+RUN version="$(node -p "require('/tmp/release.json').version")" \
+    && curl -fL --retry 10 --retry-all-errors --retry-delay 10 --connect-timeout 30 \
+         -o /tmp/hindsight.tar.gz "https://github.com/${HINDSIGHT_REPOSITORY}/archive/refs/tags/v${version}.tar.gz" \
+    && mkdir /tmp/hindsight \
+    && tar -xzf /tmp/hindsight.tar.gz -C /tmp/hindsight \
+    && mv /tmp/hindsight/* /app/upstream \
+    && rm -r /tmp/hindsight /tmp/hindsight.tar.gz
+WORKDIR /app/upstream
+# The versions of upstream's lock file, which carries the native bindings for
+# musl on amd64 and arm64; the TypeScript client is built first, the control
+# plane imports it.
+RUN --mount=type=cache,target=/home/coder/.npm,uid=101,gid=1001 \
+    npm ci --ignore-scripts \
+      --fetch-timeout=1800000 --fetch-retries=10 --fetch-retry-mintimeout=10000 \
+      -w @vectorize-io/hindsight-client -w @vectorize-io/hindsight-control-plane
+RUN npm run build -w @vectorize-io/hindsight-client
+COPY control-plane/start.cjs control-plane/prepare-base-path.cjs /app/prepare/
+ARG HINDSIGHT_BASE_PATH="/hindsight"
+RUN node /app/prepare/prepare-base-path.cjs hindsight-control-plane "${HINDSIGHT_BASE_PATH}"
+WORKDIR /app/upstream/hindsight-control-plane
+RUN NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_BASE_PATH="${HINDSIGHT_BASE_PATH}" npm exec -- next build
+# upstream's own script that lays out the standalone directory of the npm package
+RUN npm run build:standalone
+RUN test "$(node -p "require('/app/prepare/start.cjs').builtBasePath('standalone')")" = "${HINDSIGHT_BASE_PATH}"
+
 #### control-plane: browse the memory banks, on the headless Node.js base ####
 FROM mwaeckerlin/nodejs AS control-plane
 ENV CONTAINERNAME="hindsight-control-plane" \
@@ -141,6 +177,7 @@ ENV CONTAINERNAME="hindsight-control-plane" \
     HINDSIGHT_CP_DATAPLANE_API_URL="http://hindsight:8888"
 EXPOSE 9999
 COPY --from=control-plane-build /app/node_modules/@vectorize-io/hindsight-control-plane/standalone /app/control-plane
+COPY --from=control-plane-base-path-build /app/upstream/hindsight-control-plane/standalone /app/control-plane-base-path
 COPY control-plane/start.cjs /app/start.cjs
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD ["/usr/bin/node", "/app/start.cjs", "--health"]
